@@ -3,8 +3,11 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
-import { Shield, Mail, Lock, User, Building, Loader2 } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { Shield, Mail, Lock, User, Building, Loader2, AtSign } from "lucide-react";
+import { toast } from "sonner";
+import React from "react";
+import { login, register } from "../api/auth";
+
 import {
   Dialog,
   DialogContent,
@@ -23,6 +26,7 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
+    username: "",
     email: "",
     password: "",
     company: "",
@@ -46,19 +50,23 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
     return { strength: 100, label: "Strong" };
   };
 
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
-
-    if (!validateEmail(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
+  
+    if (!formData.username.trim()) {
+      newErrors.username = "Username is required";
     }
-
+    
     if (formData.password.length < 6) {
       newErrors.password = "Password must be at least 6 characters";
     }
-
+  
     if (isSignUp) {
+      if (!validateEmail(formData.email)) {
+        newErrors.email = "Please enter a valid email address";
+      }
       if (!formData.name) {
         newErrors.name = "Name is required";
       }
@@ -66,26 +74,41 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
         newErrors.acceptTos = "You must accept the terms of service";
       }
     }
-
+  
     setErrors(newErrors);
-
+  
     if (Object.keys(newErrors).length === 0) {
-      setIsLoading(true);
-      setTimeout(() => {
-        setIsLoading(false);
+      try {
+        setIsLoading(true);
+  
+        let user;
+  
         if (isSignUp) {
+          // ✅ SIGN UP → BACKEND
+          user = await register({
+            username: formData.username,
+            email: formData.email,
+            password: formData.password,
+          });
+  
           setShowOnboarding(true);
         } else {
+          // ✅ LOGIN → BACKEND
+          user = await login(formData.username, formData.password);
+  
           toast.success("Successfully signed in!");
-          onSignIn({
-            name: formData.name || "Youssef Mounib",
-            email: formData.email,
-            avatar: "",
-          });
+          onSignIn(user);
         }
-      }, 1500);
+      } catch (err: any) {
+        toast.error(
+          err?.response?.data?.message || "Authentication failed"
+        );
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
+  
 
   const handleGoogleSignIn = () => {
     setIsLoading(true);
@@ -163,6 +186,27 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
             )}
 
             <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <div className="relative">
+                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="john_doe"
+                  value={formData.username}
+                  onChange={(e) =>
+                    setFormData({ ...formData, username: e.target.value })
+                  }
+                  className={`pl-10 ${errors.username ? "border-red-500" : ""}`}
+                />
+              </div>
+              {errors.username && (
+                <p className="text-xs text-red-400">{errors.username}</p>
+              )}
+            </div>
+
+            {isSignUp && (
+              <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -183,6 +227,7 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
                 <p className="text-xs text-red-400">{errors.email}</p>
               )}
             </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
