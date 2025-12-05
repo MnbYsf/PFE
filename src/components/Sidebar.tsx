@@ -1,7 +1,7 @@
 import { Home, MessageSquare, Shield, Mail, FileText, Settings, ChevronLeft, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-
+import React from "react";
 interface SidebarProps {
   currentPage: string;
   onNavigate: (page: string) => void;

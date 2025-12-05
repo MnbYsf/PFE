@@ -6,7 +6,8 @@ import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
+import React from "react";
 
 interface AnalysisResult {
   verdict: "phishing" | "suspicious" | "clean";

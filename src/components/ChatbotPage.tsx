@@ -6,8 +6,9 @@ import { Textarea } from "./ui/textarea";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import React from "react";
 
 interface Message {
   id: string;
@@ -1078,17 +1079,19 @@ export function ChatbotPage() {
   );
 }
 
-function EnhancedMessageBubble({ 
+interface EnhancedMessageBubbleProps {
+  message: Message;
+  index: number;
+  onCopy: (content: string, id: string) => void;
+  copiedId: string | null;
+}
+
+const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({ 
   message, 
   index,
   onCopy,
   copiedId,
-}: { 
-  message: Message; 
-  index: number;
-  onCopy: (content: string, id: string) => void;
-  copiedId: string | null;
-}) {
+}) => {
   const isUser = message.role === "user";
   const [showActions, setShowActions] = useState(false);
 
@@ -1289,4 +1292,4 @@ function EnhancedMessageBubble({
       )}
     </motion.div>
   );
-}
+};

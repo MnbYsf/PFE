@@ -7,6 +7,8 @@ import { Shield, Mail, Lock, User, Building, Loader2, AtSign } from "lucide-reac
 import { toast } from "sonner";
 import React from "react";
 import { login, register } from "../api/auth";
+import { CameraCapture } from "./CameraCapture";
+import { updateProfileImage } from "../api/profile";
 
 import {
   Dialog,
@@ -25,17 +27,21 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
+    firstname: "",
+    lastname: "",
     username: "",
     email: "",
     password: "",
-    company: "",
+    numberPhone: "",
     rememberMe: false,
     acceptTos: false,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [registeredUser, setRegisteredUser] = useState<any>(null);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -84,13 +90,18 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
         let user;
   
         if (isSignUp) {
-          // ✅ SIGN UP → BACKEND
-          user = await register({
+          // SIGN UP → backend2 SignupRequest
+          const registerData: any = {
             username: formData.username,
             email: formData.email,
             password: formData.password,
-          });
-  
+            firstName: formData.name.split(" ")[0] || formData.name,
+            lastName: formData.name.split(" ").slice(1).join(" ") || "",
+            // backend2 supports numberPhone & capturedImage, but they are optional here
+          };
+
+          user = await register(registerData);
+          setRegisteredUser(user);
           setShowOnboarding(true);
         } else {
           // ✅ LOGIN → BACKEND
@@ -123,14 +134,46 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
     }, 1500);
   };
 
-  const handleOnboardingChoice = (choice: string) => {
+  const handleOnboardingChoice = async (choice: string) => {
+    console.log("Onboarding choice selected:", choice);
+    setSelectedRole(choice);
+    // Close onboarding dialog first
     setShowOnboarding(false);
-    toast.success(`Welcome! We've set up your experience for ${choice}.`);
-    onSignIn({
-      name: formData.name,
-      email: formData.email,
-      avatar: "",
-    });
+    
+    // Show camera after dialog animation completes
+    setTimeout(() => {
+      console.log("Setting showCamera to true");
+      toast.info("Camera will open now. Please allow camera access.");
+      setShowCamera(true);
+    }, 600);
+  };
+
+  const handlePhotoCaptured = async (imageData: string) => {
+    try {
+      setIsLoading(true);
+      // Update profile image
+      await updateProfileImage(imageData);
+      setShowCamera(false);
+      toast.success(`Welcome! Your profile photo has been saved.`);
+      onSignIn({
+        name: formData.name,
+        email: formData.email,
+        avatar: imageData,
+        ...registeredUser,
+      });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save profile photo");
+      // Still proceed with sign-in even if photo save fails
+      setShowCamera(false);
+      onSignIn({
+        name: formData.name,
+        email: formData.email,
+        avatar: "",
+        ...registeredUser,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const passwordStrength = getPasswordStrength(formData.password);
@@ -161,29 +204,36 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="John Doe"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className={`pl-10 ${
-                      errors.name ? "border-red-500" : ""
-                    }`}
-                  />
-                </div>
-                {errors.name && (
-                  <p className="text-xs text-red-400">{errors.name}</p>
-                )}
-              </div>
-            )}
+          {isSignUp && (
+  <>
+    <div className="space-y-2">
+      <Label htmlFor="firstName">First Name</Label>
+      <Input
+        id="firstName"
+        type="text"
+        placeholder="John"
+        value={formData.firstName}
+        onChange={(e) =>
+          setFormData({ ...formData, firstName: e.target.value })
+        }
+      />
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="lastName">Last Name</Label>
+      <Input
+        id="lastName"
+        type="text"
+        placeholder="Doe"
+        value={formData.lastName}
+        onChange={(e) =>
+          setFormData({ ...formData, lastName: e.target.value })
+        }
+      />
+    </div>
+  </>
+)}
+
 
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
@@ -278,23 +328,23 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
             </div>
 
             {isSignUp && (
-              <div className="space-y-2">
-                <Label htmlFor="company">Company (Optional)</Label>
-                <div className="relative">
-                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="company"
-                    type="text"
-                    placeholder="Acme Corp"
-                    value={formData.company}
-                    onChange={(e) =>
-                      setFormData({ ...formData, company: e.target.value })
-                    }
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            )}
+  <div className="space-y-2">
+    <Label htmlFor="numberPhone">Phone Number</Label>
+    <div className="relative">
+      <Input
+        id="numberPhone"
+        type="tel"
+        placeholder="0612345678"
+        value={formData.numberPhone}
+        onChange={(e) =>
+          setFormData({ ...formData, numberPhone: e.target.value })
+        }
+        className="pl-10"
+      />
+    </div>
+  </div>
+)}
+
 
             {!isSignUp && (
               <div className="flex items-center justify-between">
@@ -337,6 +387,31 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
             )}
             {errors.acceptTos && (
               <p className="text-xs text-red-400">{errors.acceptTos}</p>
+            )}
+
+            {/* TEST CAMERA BUTTON - VERY VISIBLE - ALWAYS SHOW IN SIGNUP */}
+            {isSignUp && (
+              <div 
+                className="p-4 bg-yellow-400 border-4 border-yellow-600 rounded-xl mb-4 shadow-lg"
+                style={{ backgroundColor: '#fef08a', borderColor: '#ca8a04', display: 'block' }}
+              >
+                {console.log("✅ TEST BUTTON IS RENDERING - isSignUp:", isSignUp)}
+                <Button
+                  type="button"
+                  onClick={() => {
+                    console.log("TEST: Manually opening camera");
+                    toast.info("Opening camera for testing...");
+                    setShowCamera(true);
+                  }}
+                  className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 text-base shadow-md"
+                  style={{ backgroundColor: '#ca8a04' }}
+                >
+                  🎥🎥🎥 TEST CAMERA BUTTON - CLICK ME! 🎥🎥🎥
+                </Button>
+                <p className="text-sm text-center mt-2 font-semibold" style={{ color: '#854d0e' }}>
+                  ⚠️ TEST BUTTON: Click to test camera functionality
+                </p>
+              </div>
             )}
 
             <Button
@@ -423,13 +498,70 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
         </div>
       </div>
 
+      {showCamera && (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100vw",
+      height: "100vh",
+      background: "rgba(0,0,0,0.85)",
+      zIndex: 999999,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center"
+    }}
+  >
+    <div style={{
+      background: "#111",
+      padding: "15px",
+      borderRadius: "8px",
+      textAlign: "center"
+    }}>
+      {console.log("📸 Camera modal visible — showCamera:", showCamera)}
+
+      <CameraCapture
+        onCapture={handlePhotoCaptured}
+        onCancel={() => {
+          setShowCamera(false);
+          toast.info("Signup completed without profile photo");
+          onSignIn({
+            name: formData.name,
+            email: formData.email,
+            avatar: "",
+            ...registeredUser,
+          });
+        }}
+        existingImage={null}
+      />
+    </div>
+  </div>
+)}
+
       {/* Onboarding Modal */}
-      <Dialog open={showOnboarding} onOpenChange={setShowOnboarding}>
+      <Dialog open={showOnboarding} onOpenChange={(open) => {
+        setShowOnboarding(open);
+        // If dialog is closed without selection, don't show camera
+        if (!open && !selectedRole) {
+          // User closed dialog without selecting, complete signup
+          onSignIn({
+            name: formData.name,
+            email: formData.email,
+            avatar: "",
+            ...registeredUser,
+          });
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Welcome to Cyber Guard! 🎉</DialogTitle>
             <DialogDescription>
               Help us customize your experience. What best describes you?
+              <br />
+              <span className="text-xs text-muted-foreground mt-2 block">
+                After selecting, you'll be asked to take a photo for face recognition.
+              </span>
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 mt-4">
@@ -438,21 +570,21 @@ export function AuthPage({ onSignIn }: AuthPageProps) {
               variant="outline"
               className="justify-start"
             >
-              👨‍💻 I'm a Developer
+               I'm a Developer
             </Button>
             <Button
               onClick={() => handleOnboardingChoice("site owners")}
               variant="outline"
               className="justify-start"
             >
-              🌐 I'm a Site Owner
+               I'm a Site Owner
             </Button>
             <Button
               onClick={() => handleOnboardingChoice("learners")}
               variant="outline"
               className="justify-start"
             >
-              📚 I'm a Cybersecurity Learner
+               I'm a Cybersecurity Learner
             </Button>
           </div>
         </DialogContent>

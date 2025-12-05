@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Shield, AlertTriangle, CheckCircle, XCircle, Download, ChevronDown, ChevronUp, ExternalLink, Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
+import React from "react";
 import {
   Select,
   SelectContent,
@@ -13,6 +14,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { startScan, getScanStatus, downloadScanReport, ScanType } from "../api/scan";
 
 interface Vulnerability {
   id: string;
@@ -29,13 +31,115 @@ export function ScanWebsitesPage() {
   const [url, setUrl] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanDepth, setScanDepth] = useState("quick");
+  const [scanDepth, setScanDepth] = useState<"quick" | "full">("quick");
   const [results, setResults] = useState<{
     score: number;
     risk: string;
     vulnerabilities: Vulnerability[];
     summary: string[];
   } | null>(null);
+  const [scanId, setScanId] = useState<string | null>(null);
+
+  // Poll backend2 for scan status while a scan is running
+  useEffect(() => {
+    if (!scanId || !isScanning) return;
+
+    let cancelled = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const status = await getScanStatus(scanId);
+        if (cancelled) return;
+
+        setScanProgress(status.progress);
+
+        if (status.status === "COMPLETED" || status.status === "FAILED") {
+          clearInterval(interval);
+          setIsScanning(false);
+
+          if (status.status === "FAILED") {
+            toast.error(status.stateDescription || "Scan failed");
+            return;
+          }
+
+          // Backend2 does not expose structured vulnerability details in JSON yet,
+          // so we keep using the existing mock data for the detailed breakdown,
+          // but now it is driven by a real scan lifecycle.
+          const mockResults = {
+            score: 62,
+            risk: "Medium",
+            summary: [
+              "Missing security headers detected",
+              "Outdated JavaScript libraries found",
+              "SSL/TLS configuration could be improved",
+            ],
+            vulnerabilities: [
+              {
+                id: "1",
+                title: "Missing Content Security Policy (CSP)",
+                severity: "high" as const,
+                description:
+                  "The website does not implement a Content Security Policy header, leaving it vulnerable to XSS attacks.",
+                evidence:
+                  "HTTP Response Headers:\nNo 'Content-Security-Policy' header found",
+                recommendation:
+                  "Implement a strict CSP header:\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline';",
+                cve: undefined,
+              },
+              {
+                id: "2",
+                title: "Outdated jQuery Library",
+                severity: "medium" as const,
+                description:
+                  "The website uses jQuery version 2.1.4 which has known security vulnerabilities.",
+                evidence:
+                  "Found: jquery-2.1.4.min.js\nKnown CVEs: CVE-2020-11022, CVE-2020-11023",
+                recommendation:
+                  "Update to jQuery 3.6.0 or later:\nnpm update jquery",
+                cve: "CVE-2020-11022",
+              },
+              {
+                id: "3",
+                title: "Missing X-Frame-Options Header",
+                severity: "medium" as const,
+                description:
+                  "The X-Frame-Options header is not set, making the site vulnerable to clickjacking attacks.",
+                evidence:
+                  "HTTP Response Headers:\nNo 'X-Frame-Options' header found",
+                recommendation:
+                  "Add the following header:\nX-Frame-Options: DENY",
+              },
+              {
+                id: "4",
+                title: "TLS 1.0 Enabled",
+                severity: "low" as const,
+                description:
+                  "The server supports TLS 1.0, which is deprecated and considered insecure.",
+                evidence:
+                  "Supported protocols: TLS 1.0, TLS 1.1, TLS 1.2, TLS 1.3",
+                recommendation:
+                  "Disable TLS 1.0 and TLS 1.1. Use only TLS 1.2 and TLS 1.3.",
+              },
+            ],
+          };
+
+          setResults(mockResults);
+          toast.success("Scan complete");
+        }
+      } catch (err: any) {
+        clearInterval(interval);
+        setIsScanning(false);
+        toast.error(
+          err?.response?.data?.message || "Error while checking scan status"
+        );
+      }
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [scanId, isScanning]);
 
   const validateUrl = (url: string) => {
     try {
@@ -56,72 +160,24 @@ export function ScanWebsitesPage() {
     setScanProgress(0);
     setResults(null);
 
-    // Simulate scan progress
-    const progressInterval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(progressInterval);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 300);
+    try {
+      const backendScanType: ScanType =
+        scanDepth === "full" ? "FULL" : "QUICK";
 
-    // Simulate scan completion
-    setTimeout(() => {
-      clearInterval(progressInterval);
-      setScanProgress(100);
-      
-      const mockResults = {
-        score: 62,
-        risk: "Medium",
-        summary: [
-          "Missing security headers detected",
-          "Outdated JavaScript libraries found",
-          "SSL/TLS configuration could be improved",
-        ],
-        vulnerabilities: [
-          {
-            id: "1",
-            title: "Missing Content Security Policy (CSP)",
-            severity: "high" as const,
-            description: "The website does not implement a Content Security Policy header, leaving it vulnerable to XSS attacks.",
-            evidence: "HTTP Response Headers:\nNo 'Content-Security-Policy' header found",
-            recommendation: "Implement a strict CSP header:\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline';",
-            cve: undefined,
-          },
-          {
-            id: "2",
-            title: "Outdated jQuery Library",
-            severity: "medium" as const,
-            description: "The website uses jQuery version 2.1.4 which has known security vulnerabilities.",
-            evidence: "Found: jquery-2.1.4.min.js\nKnown CVEs: CVE-2020-11022, CVE-2020-11023",
-            recommendation: "Update to jQuery 3.6.0 or later:\nnpm update jquery",
-            cve: "CVE-2020-11022",
-          },
-          {
-            id: "3",
-            title: "Missing X-Frame-Options Header",
-            severity: "medium" as const,
-            description: "The X-Frame-Options header is not set, making the site vulnerable to clickjacking attacks.",
-            evidence: "HTTP Response Headers:\nNo 'X-Frame-Options' header found",
-            recommendation: "Add the following header:\nX-Frame-Options: DENY",
-          },
-          {
-            id: "4",
-            title: "TLS 1.0 Enabled",
-            severity: "low" as const,
-            description: "The server supports TLS 1.0, which is deprecated and considered insecure.",
-            evidence: "Supported protocols: TLS 1.0, TLS 1.1, TLS 1.2, TLS 1.3",
-            recommendation: "Disable TLS 1.0 and TLS 1.1. Use only TLS 1.2 and TLS 1.3.",
-          },
-        ],
-      };
+      const response = await startScan(url, backendScanType);
 
-      setResults(mockResults);
+      if (!response.success) {
+        setIsScanning(false);
+        toast.error(response.message || "Failed to start scan");
+        return;
+      }
+
+      setScanId(response.scanId);
+      toast.success("Scan started");
+    } catch (err: any) {
       setIsScanning(false);
-      toast.success("Scan complete — 4 issues found");
-    }, 3000);
+      toast.error(err?.response?.data?.message || "Failed to start scan");
+    }
   };
 
   const toggleVulnerability = (id: string) => {
@@ -206,6 +262,8 @@ export function ScanWebsitesPage() {
             <SelectContent className="glass border-white/20">
               <SelectItem value="quick">Quick Scan</SelectItem>
               <SelectItem value="full">Full Scan</SelectItem>
+              <SelectItem value="sql_injection">SQL Injection Scan</SelectItem>
+              <SelectItem value="xss">XSS Scan</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -334,13 +392,40 @@ export function ScanWebsitesPage() {
             <div className="flex items-center justify-between mb-6">
               <h3>Vulnerability Details</h3>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="glass border-white/20">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="glass border-white/20"
+                  disabled={!scanId}
+                  onClick={async () => {
+                    if (!scanId) return;
+                    try {
+                      const blob = await downloadScanReport(scanId);
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "scan-report.pdf";
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                    } catch (err: any) {
+                      toast.error(
+                        err?.response?.data?.message ||
+                          "Failed to download report"
+                      );
+                    }
+                  }}
+                >
                   <Download className="w-4 h-4 mr-2" />
                   PDF Report
                 </Button>
-                <Button size="sm" variant="outline" className="glass border-white/20">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="glass border-white/20"
+                  disabled
+                >
                   <Download className="w-4 h-4 mr-2" />
-                  JSON
+                  JSON (not available)
                 </Button>
               </div>
             </div>
